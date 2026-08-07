@@ -1,0 +1,21 @@
+# Dependencies
+node_modules/
+
+# TypeSpec generated artifacts (OpenAPI contract)
+spec/dist/
+
+# Go
+backend/bin/
+backend/coverage.out
+*.test
+
+# Environment
+.env
+
+# Editor / IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store

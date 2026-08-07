@@ -1,0 +1,8 @@
+# TypeSpec project configuration.
+# Compile with: npx tsp compile .
+# Generated OpenAPI v3 contract goes to spec/dist/.
+
+emitters:
+  "@typespec/openapi3":
+    output-dir: dist
+    file-type: yaml
