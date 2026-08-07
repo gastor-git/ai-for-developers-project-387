@@ -1,0 +1,4 @@
+# Redocly CLI configuration for validating the generated OpenAPI contract.
+# Usage: npm run validate  (redocly lint dist/openapi.yaml)
+extends:
+  - recommended

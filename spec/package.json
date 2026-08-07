@@ -6,9 +6,11 @@
   "type": "module",
   "scripts": {
     "compile": "tsp compile .",
-    "compile:watch": "tsp compile . --watch"
+    "compile:watch": "tsp compile . --watch",
+    "validate": "redocly lint dist/openapi.yaml"
   },
   "devDependencies": {
+    "@redocly/cli": "^1.34.0",
     "@typespec/compiler": "^1.14.0",
     "@typespec/http": "^1.14.0",
     "@typespec/openapi3": "^1.14.0",

@@ -22,10 +22,14 @@ hexlet/
 ├── .env.example       # переменные окружения для docker compose
 ├── .gitignore         # игнор: node_modules/, spec/dist/, .env и др.
 ├── spec/              # TypeSpec-спецификация
-│   ├── package.json   # зависимости @typespec/* + скрипт compile
+│   ├── package.json   # зависимости @typespec/*, @typespec/openapi, @redocly/cli + скрипты compile/validate
 │   ├── package-lock.json
-│   ├── tspconfig.yaml # конфиг компиляции + эмиттер OpenAPI v3
-│   ├── *.tsp          # модели, операции, типы ошибок
+│   ├── tspconfig.yaml # конфиг компиляции + эмиттер OpenAPI v3 (openapi.yaml + openapi.json)
+│   ├── .redocly.yaml  # настройка валидации сгенерированного OpenAPI (Redocly, правила recommended)
+│   ├── main.tsp       # сервис, базовые декораторы, теги
+│   ├── models.tsp     # модели Owner/Event/Booking/Slot + валидация полей
+│   ├── errors.tsp     # типы ошибок (400/404/409)
+│   ├── operations.tsp # маршруты API (вложенные namespace)
 │   └── dist/          # сгенерированные openapi.yaml / openapi.json (.gitignore)
 ├── backend/           # Go (REST API, SQLite)
 └── frontend/          # Vue 3 + Vite
@@ -45,7 +49,7 @@ hexlet/
 | POST | `/api/owners/{ownerId}/events` | создать событие |
 | GET | `/api/owners/{ownerId}/events/{eventId}` | страница события для гостя |
 | GET | `/api/owners/{ownerId}/events/{eventId}/slots?date=YYYY-MM-DD` | свободные слоты на дату |
-| POST | `/api/owners/{ownerId}/events/{eventId}/bookings` | создать бронирование (name, email) |
+| POST | `/api/owners/{ownerId}/events/{eventId}/bookings` | создать бронирование (name, email, startAt выбранного слота) |
 | GET | `/api/owners/{ownerId}/bookings` | все бронирования (владелец) |
 
 Ошибки: `400` (невалидный запрос, в т.ч. нарушение валидации полей), `404` (не найдено), `409` (слот занят).
@@ -76,16 +80,28 @@ hexlet/
 Реализация (Этап 1):
 - Версии TypeSpec: `@typespec/compiler`, `@typespec/http`, `@typespec/openapi3` — `^1.14.0`; `@typespec/rest` — `^0.84.0`. Требуется Node >= 22.
 - `spec/package-lock.json` закоммичен для воспроизводимости; `make spec` = `npm ci` + `npx tsp compile .`.
-- `tspconfig.yaml` использует блок `emitters: { "@typespec/openapi3": { output-dir: dist, file-type: yaml } }` — генерируется `openapi.yaml`; если потребуется `openapi.json`, в Этапе 2 сменить на `file-type: json+yaml`.
+- `tspconfig.yaml` изначально использовал блок `emitters`; в Этапе 2 переведён на синтаксис TypeSpec 1.14 (`emit` + `options`, см. ниже).
 - `docker-compose.yml`: сервис `db` (alpine, держит volume `sqlite-data` в `/data`), `backend` пишет в тот же volume через env `DB_PATH`, `frontend`. Порты берутся из `.env` (дефолты: `BACKEND_PORT=8080`, `FRONTEND_PORT=5173`); `docker compose config` проходит.
 - `backend/` и `frontend/` пока пустые (`.gitkeep`).
 
 ### Этап 2 — TypeSpec-спецификация и генерация OpenAPI v3 (главный этап по PLAN.md)
-- Инструменты: `@typespec/http`, `@typespec/rest`, эмиттер `@typespec/openapi3`.
-- Модели Owner/Event/Booking/Slot + схемы запросов/ответов/ошибок (400/404/409), базовый путь `/api`.
-- Настройка эмиттера в `tspconfig.yaml`: `emitters: @typespec/openapi3`, `options: { output-dir: dist, file-type: yaml }`.
-- Цель `make spec` = `npm ci` + `tsp compile .` → генерация `spec/dist/openapi.yaml` (+ `openapi.json`).
-- Критерий готовности: `make spec` проходит, сгенерированный OpenAPI v3 валиден (проверка валидатором, напр. Redocly), спецификация покрывает все пункты PLAN.md.
+Статус: выполнено.
+
+- [x] Инструменты: `@typespec/http`, `@typespec/rest`, `@typespec/openapi`, эмиттер `@typespec/openapi3`.
+- [x] Модели Owner/Event/Booking/Slot/Schedule + схемы запросов/ответов/ошибок (400/404/409), базовый путь `/api`.
+- [x] Настройка эмиттера в `tspconfig.yaml`: генерация `spec/dist/openapi.yaml` и `openapi.json`.
+- [x] Цель `make spec` = `npm ci` + `tsp compile .` → генерация `spec/dist/openapi.yaml` (+ `openapi.json`).
+- [x] Критерий готовности: `make spec` проходит, сгенерированный OpenAPI v3 валиден (проверка валидатором Redocly), спецификация покрывает все пункты PLAN.md.
+
+Реализация (Этап 2):
+- Файлы: `main.tsp` (сервис, `@service`/`@info`/`@useAuth`/`@server`/`@tagMetadata`), `models.tsp`, `errors.tsp`, `operations.tsp`.
+- `tspconfig.yaml` на синтаксисе TypeSpec 1.14: `output-dir: {project-root}/dist` + `emit: [@typespec/openapi3]` + `options` (блок `emitters` устарел). Для вывода обоих форматов задан `emitter-output-dir: {project-root}/dist` и `file-type: [yaml, json]`.
+- Нюансы TypeSpec 1.14: объектные литералы в аргументах декораторов — синтаксис `#{...}`; версия API задаётся `@info` из `@typespec/openapi` (в `@service` только `title`); вложенные `interface` запрещены — маршруты строятся через вложенные `namespace` с `@route`.
+- API без авторизации зафиксирован явно: `@useAuth(NoAuth)` → в OpenAPI эмитится `security: [{ }]`.
+- Валидация в контракте: email гостя — `@pattern` (обязателен, валидный формат); длительность события — `@minValue(15)`/`@maxValue(480)`; дата — `@pattern(^\d{4}-\d{2}-\d{2}$)`.
+- Валидация артефакта: `npm run validate` = `redocly lint dist/openapi.yaml` (`.redocly.yaml`, правила `recommended`). Проверка проходит; остаётся 1 неблокирующий warning про `info.license` (лицензия проекта не задана).
+- В пакет добавлены зависимости `@typespec/openapi` (^1.14.0) и `@redocly/cli` (^1.34.0) + скрипт `validate`; `package-lock.json` пересобран.
+- Требуется Node >= 22 (в системе установлен локально, `~/.local/opt/node`).
 
 ### Этап 3 — Бэкенд (Go)
 - Реализация по сгенерированному `spec/dist/openapi.yaml` (ручная сверка путей/схем/ошибок с контрактом).
@@ -109,6 +125,7 @@ hexlet/
 
 ## Открытые решения (дефолты)
 - **Маршруты**: все операции событий и бронирований строятся по `ownerId` + `eventId` (соответствует PLAN.md и фронт-URL).
+- **Тело POST `/bookings`**: `name`, `email`, `startAt` — слот выбирает гость, сервер сам вычисляет `endAt` по длительности события.
 - **Формат OpenAPI-артефакта**: основной — `yaml`, дополнительно `json`; `spec/dist/` генерируется и не коммитится.
 - **Часовой пояс**: слоты считаются в таймзоне владельца (она же серверная), `date` интерпретируется в ней же; в API время передаётся в UTC ISO-8601.
 - **Шаг сетки**: шаг = длительности события (старт следующего слота сразу после конца предыдущего).

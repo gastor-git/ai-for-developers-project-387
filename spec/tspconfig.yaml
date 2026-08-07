@@ -2,7 +2,12 @@
 # Compile with: npx tsp compile .
 # Generated OpenAPI v3 contract goes to spec/dist/.
 
-emitters:
+output-dir: "{project-root}/dist"
+emit:
+  - "@typespec/openapi3"
+options:
   "@typespec/openapi3":
-    output-dir: dist
-    file-type: yaml
+    emitter-output-dir: "{project-root}/dist"
+    file-type:
+      - yaml
+      - json
