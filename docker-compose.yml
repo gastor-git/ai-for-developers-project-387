@@ -1,7 +1,7 @@
 services:
   db:
     image: alpine:3.20
-    command: ["tail", "-f", "/dev/null"]
+    command: ["sh", "-c", "chown -R 65534:65534 /data && tail -f /dev/null"]
     volumes:
       - sqlite-data:/data
     restart: unless-stopped
