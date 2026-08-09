@@ -12,9 +12,6 @@ backend/coverage.out
 # Environment
 .env
 
-# Secrets (Render API key)
-APIKEY.md
-
 # Editor / IDE
 .idea/
 .vscode/
