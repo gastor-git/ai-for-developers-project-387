@@ -49,3 +49,24 @@ npm run lint    # oxlint
 
 Docker-образ собирается многостадийным Dockerfile (node → nginx). В проде nginx
 отдаёт статику и проксирует `/api` на сервис `backend` (см. `nginx.conf`).
+
+## E2E-тесты (Playwright)
+
+Сценарии в `frontend/e2e/` (`npm run test:e2e`), конфиг — `playwright.config.ts`.
+
+Стек поднимается самим Playwright через `webServer`: бэкенд
+(`go run .` в `backend/`, свежая БД в `/tmp/booking-e2e.db`) + фронтенд
+(`npm run dev`). Требуется установленный Go. `workers: 1` и общий бэкенд —
+сценарии выполняются последовательно.
+
+```sh
+npm run test:e2e               # локально: скачает Chromium
+PLAYWRIGHT_USE_SYSTEM_CHROME=1 npm run test:e2e   # использовать системный Chrome
+```
+
+Покрытие:
+
+1. владелец создаёт событие через UI и видит его в списке;
+2. гость бронирует слот и получает подтверждение;
+3. владелец видит бронь на странице `/bookings`;
+4. бронь того же слота дважды отклоняется (конфликт 409).

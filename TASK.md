@@ -151,10 +151,37 @@ hexlet/
 - Docker: `docker-compose.yml` — сервис `db` (alpine) теперь выполняет `chown -R 65534:65534 /data`, чтобы бэкенд (`USER nobody`) мог писать в volume; заглушка Этапа 3 заменена реальным бэкендом.
 - Проверка: `make test` (go test ./...), `go vet`, `gofmt`, `CGO_ENABLED=0 go build`, `make build`; `docker compose up` поднимает 3 сервиса, сценарий «владелец создаёт событие → гость бронирует слот → дубль даёт 409 → бронь видна в /bookings» проходит через nginx-proxy; данные сохраняются в volume после рестарта бэкенда.
 
-### Этап 5 — Docker и приёмка
-- Dockerfile для backend/frontend, docker-compose, CORS, README с инструкцией запуска.
-- E2E-проверка по чек-листу PLAN.md, прогон Hexlet CI.
-- Чек-лист готовности: `docker compose up` поднимает все 3 сервиса; сценарий «владелец создаёт событие → гость бронирует слот → бронь видна владельцу» проходит через полный стек; CI (Hexlet Check) зелёный.
+### Этап 5 — E2E-тестирование (Playwright), CI и автоматизация релизов
+Статус: выполнено.
+
+- [x] Описаны и зафиксированы основные пользовательские сценарии для проверки (см. «E2E-сценарии»).
+- [x] Подключён Playwright; E2E-тесты покрывают основной сценарий бронирования и конфликт 409.
+- [x] Настроен запуск тестов в CI через GitHub Actions.
+- [x] Описан формат коммитов по Conventional Commits.
+- [x] Подключён release-please как GitHub Actions workflow.
+- [x] После мёджа в основную ветку release-please создаёт или обновляет release-PR с changelog и предложенной версией.
+
+План (Этап 5):
+- **E2E — Playwright**. Тесты живут в `frontend/` (`@playwright/test`, `playwright.config.ts`, сценарии в `frontend/e2e/`). Стек для тестов поднимается самим Playwright через `webServer`: бэкенд (`go run .` в `backend/`, свежая БД в `/tmp/booking-e2e.db`) + фронтенд (`npm run dev` с Vite proxy на бэкенд). `workers: 1`, `fullyParallel: false` (общий бэкенд), `locale: 'en-US'` — для детерминированных селекторов дат в календаре. Сценарии:
+  1. Владелец создаёт событие через UI (`/owners/1`: название, описание, длительность 15–480 мин) и видит его в списке.
+  2. Гость бронирует слот: страница события → следующий рабочий день в календаре → свободный слот → имя/email → подтверждение «Готово!».
+  3. Владелец видит бронь в `/owners/1/bookings` (время, имя, email гостя).
+  4. Конфликт 409: бронь того же слота дважды — вторая попытка отклоняется («Выбранный слот уже занят»).
+  Детерминизм: «следующий рабочий день» (слоты строго в будущем, выходные закрыты), выбор дня по `data-day` календаря, при необходимости перелистывание месяца.
+- **CI — GitHub Actions** (`.github/workflows/ci.yml`, не трогаем `hexlet-check.yml`): джобы `contract` (`make spec` + Redocly validate), `backend` (`make test`), `frontend` (`npm ci` + lint + build), `e2e` (`npm ci`, `playwright install --with-deps chromium`, `npm run test:e2e`). Для Node — setup-node 22, для Go — setup-go по `backend/go.mod`.
+- **Conventional Commits**. Формат `type(scope): subject`, subject — на русском; `feat:` → minor, `fix:` → patch, `feat!:`/`BREAKING CHANGE` → major. Описание — в новом `CONTRIBUTING.md`, правило в `AGENTS.md` заменяет прежний формат «выполнен Этап N — …».
+- **release-please** (`.github/workflows/release.yml`, `googleapis/release-please-action@v4`). Версионируется весь проект через корневой `package.json` (`booking-calendar`, `release-type: node`); тег `vX.Y.Z`, changelog генерируется автоматически. Токен — дефолтный `GITHUB_TOKEN`; если потребуется прогон CI на самом release-PR — нужен PAT-секрет (см. release-please-action).
+
+Чек-лист готовности: `make test` зелёный; фронтенд собирается (`npm run build`, lint); `make spec` проходит; `npm run test:e2e` проходит локально и в CI — сценарии 1–4 покрывают основной сценарий бронирования; после пуш в `main` release-please создаёт/обновляет release-PR с changelog и версией; релизы формируются автоматически по истории коммитов.
+
+Реализация (Этап 5):
+- **E2E — Playwright**: `@playwright/test` ^1.62.1 добавлен в devDependencies `frontend/`; `frontend/playwright.config.ts` (`testDir: e2e/`, `workers: 1`, `fullyParallel: false`, `locale: 'en-US'`, `reporter: list`, скриншот при падении). Стек поднимает сам Playwright через `webServer` (массив из двух серверов): бэкенд `rm -f /tmp/booking-e2e.db* && go run .` (свежая БД, `DB_PATH=/tmp/booking-e2e.db`, `ADDR=:8080`, health-check `/api/health`) + фронтенд `npm run dev -- --strictPort` (Vite proxy на `http://localhost:8080`). Для локальных прогонов без скачанного Chromium предусмотрен `PLAYWRIGHT_USE_SYSTEM_CHROME=1` (канал `chrome`); в CI ставится штатный Chromium (`playwright install --with-deps chromium`).
+- **Сценарии** в `frontend/e2e/booking-flow.spec.ts` (`test.describe.serial`) + хелперы в `frontend/e2e/utils.ts`: (1) владелец создаёт событие через UI и видит его в списке; (2) гость бронирует слот: «следующий рабочий день» → первый свободный слот → имя/email → «Готово!»; (3) владелец видит бронь в `/owners/1/bookings`; (4) конфликт 409: две страницы выбирают один и тот же слот, вторая попытка отклоняется («Выбранный слот уже занят»). Детерминизм: `nextWorkingDay()` (слоты строго в будущем, пн–пт), выбор дня по `data-day` (значение `toLocaleDateString()` в локали `en-US`, совпадает в Node и браузере), перелистывание месяца по aria-label «Go to the Next Month» при переходе через границу месяца (окно ≤ 14 дней → не больше одного листания). Конфликт 409 воспроизводится через две вкладки с «устаревшим» списком слотов: первая бронирует, вторая получает 409.
+- **CI — GitHub Actions** (`.github/workflows/ci.yml`; `hexlet-check.yml` не тронут): джобы `contract` (`make spec` + `make spec-validate`), `backend` (`make test`, setup-go по `backend/go.mod`), `frontend` (`npm ci` + `npm run lint` + `npm run build`, setup-node 22 с кэшем по `frontend/package-lock.json`), `e2e` (`npm ci` → `playwright install --with-deps chromium` → `npm run test:e2e`; при падении загружается артефакт `frontend/test-results/`). Триггеры: push в `main` и pull_request; `concurrency` с отменой вхолостую запусков.
+- **Conventional Commits**: новый `CONTRIBUTING.md` (формат `type(scope): subject`, subject — на русском, таблица типов и влияния на версию: `feat:` → minor, `fix:` → patch, `feat!:`/`BREAKING CHANGE` → major; перечень проверок перед коммитом). Правило в `AGENTS.md` заменяет прежний формат «выполнен Этап N — …».
+- **release-please** (`.github/workflows/release.yml`, `googleapis/release-please-action@v4`): версионируется весь проект через корневой `package.json` (`booking-calendar`, версия `0.1.0`, `release-type: node`, `package-name: booking-calendar`); тег `vX.Y.Z`, changelog генерируется автоматически; токен — дефолтный `GITHUB_TOKEN`, права `contents: write` + `pull-requests: write`. Работает на push в `main`.
+- **Makefile**: добавлены цели `spec-validate` и `test-e2e` (в `help` описаны). README (`./README.md` — бейдж CI + раздел «Запуск и проверки»; `frontend/README.md` — раздел про E2E-тесты) и `.gitignore` (артефакты Playwright: `test-results/`, `playwright-report/` и др. в `frontend/.gitignore`) обновлены.
+- Проверка: `make test` зелёный; `npm run lint` (только прежние неблокирующие warnings в ui-компонентах) и `npm run build` проходят; `make spec` + `make spec-validate` проходят (1 неблокирующий warning про `info.license`); локально `npm run test:e2e` — 4/4 зелёные (~7.5 s).
 
 ## Открытые решения (дефолты)
 - **Маршруты**: все операции событий и бронирований строятся по `ownerId` + `eventId` (соответствует PLAN.md и фронт-URL).

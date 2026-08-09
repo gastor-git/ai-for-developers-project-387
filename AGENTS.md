@@ -17,11 +17,12 @@ Web-приложение «Календарь бронирований» — у�
 
 ## Команды
 - `make spec` — сгенерировать OpenAPI из TypeSpec (npm ci + tsp compile)
+- `make spec-validate` — валидация OpenAPI через Redocly
 - `make dev` — поднять все сервисы (docker compose up --build)
 - `make test` — тесты бэкенда (cd backend && go test ./...)
+- `make test-e2e` — E2E-тесты Playwright (cd frontend && npm run test:e2e)
 - `make build` — сборка docker-образов
-- `npm run validate` (в spec/) — валидация OpenAPI через Redocly
 
 ## Конвенции и правила
-- Сообщения коммитов — на русском, формат «выполнен Этап N — краткое описание»
+- Сообщения коммитов — по Conventional Commits: `type(scope): subject`, subject — на русском; `feat:` → minor, `fix:` → patch, `feat!:`/`BREAKING CHANGE` → major (подробнее в CONTRIBUTING.md). История коммитов анализируется release-please для генерации релизов.
 - Бэкенд и фронтенд разрабатываются строго по контракту spec/dist/openapi.yaml.
