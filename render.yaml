@@ -1,0 +1,8 @@
+services:
+  - type: web
+    name: booking-calendar
+    runtime: docker
+    repo: https://github.com/gastor-git/ai-for-developers-project-386
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
+    plan: free

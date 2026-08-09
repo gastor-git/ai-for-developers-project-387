@@ -3,6 +3,15 @@
 Web-приложение — упрощённый аналог cal.com. Гость бронирует слоты без регистрации,
 владелец календаря настраивает события и график работы.
 
+## Демо
+
+Приложение развёрнуто на Render (единый контейнер с SPA и API):
+
+<https://ai-for-developers-project-386-qitn.onrender.com>
+
+> Free-план Render усыпляет сервис после простоя — первый запрос после паузы
+> занимает 30–60 секунд.
+
 ## Статус
 
 [![Hexlet tests and linter status](https://github.com/gastor-git/ai-for-developers-project-386/actions/workflows/hexlet-check.yml/badge.svg)](https://github.com/gastor-git/ai-for-developers-project-386/actions/workflows/hexlet-check.yml)

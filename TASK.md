@@ -183,6 +183,39 @@ hexlet/
 - **Makefile**: добавлены цели `spec-validate` и `test-e2e` (в `help` описаны). README (`./README.md` — бейдж CI + раздел «Запуск и проверки»; `frontend/README.md` — раздел про E2E-тесты) и `.gitignore` (артефакты Playwright: `test-results/`, `playwright-report/` и др. в `frontend/.gitignore`) обновлены.
 - Проверка: `make test` зелёный; `npm run lint` (только прежние неблокирующие warnings в ui-компонентах) и `npm run build` проходят; `make spec` + `make spec-validate` проходят (1 неблокирующий warning про `info.license`); локально `npm run test:e2e` — 4/4 зелёные (~7.5 s).
 
+### Этап 6 — Docker и деплой
+Статус: выполнено.
+
+- [x] В корне репозитория файл `Dockerfile`: по нему собирается образ и запускается приложение (одинаково локально, в CI и в облаке).
+- [x] При запуске контейнера из собранного образа приложение стартует автоматически.
+- [x] Приложение слушает порт из переменной окружения `PORT` (используется при деплое и в автоматической проверке проекта).
+- [x] После деплоя у приложения есть публичная ссылка.
+- [x] Собран Docker-образ приложения и проверена его работа.
+- [x] Настроен деплой на Render (запуск по `PORT`, проверка работы приложения); если Render требует оплату или недоступен — тот же образ деплоится на Railway (запуск по `PORT`, публичная ссылка).
+- [x] В репозиторий добавлена ссылка на опубликованное приложение.
+
+Результат:
+- Есть `Dockerfile` для сборки образа; приложение запускается в контейнере по `PORT`.
+
+План (Этап 6):
+- **Единый Dockerfile** в корне репозитория (многостадийный): stage `node:22-alpine` — сборка фронтенда (`npm ci` + `npm run build`, `dist/`); stage `golang:1.26-alpine` — сборка бэкенда (`CGO_ENABLED=0 go build`); runtime `nginx:1.27-alpine` — SPA + бинарь бэкенда, оба процесса в одном контейнере.
+- **Запуск по `PORT`**: nginx-конфиг собирается из шаблона `nginx.conf.template` (`listen ${PORT};`, официальный envsubst-механизм nginx — переменные nginx `$uri`/`$host` не подставляются); `/api/` проксируется на `127.0.0.1:8080`, статика SPA отдаётся через `try_files`.
+- **Entrypoint**: `docker-entrypoint.sh` стартует бэкенд на `127.0.0.1:8080` в фоне (с wait на `/api/health`) и запускает официальный `/docker-entrypoint.sh` nginx; trap на TERM/INT для корректной остановки. `HEALTHCHECK` на `/api/health`, `WORKDIR /srv` для записи `booking.db`.
+- **Deploy**: `render.yaml` (blueprint: web-сервис, `runtime: docker`, `dockerfilePath: ./Dockerfile`, `healthCheckPath: /api/health`, план free) + деплой через Render MCP (API ключ для Render запроси во время выполнения); запасной вариант — Railway (тот же Dockerfile, `PORT`, публичная ссылка).
+- **Публичная ссылка**: добавляется в `README.md` (блок «Демо»).
+
+Чек-лист готовности: `docker build .` проходит; контейнер стартует автоматически и отвечает по `PORT` (`/` — SPA, `/api/health` — 200); сценарий «владелец создаёт событие → гость бронирует слот → дубль даёт 409» проходит через один контейнер; приложение задеплоено и доступно по публичной ссылке (Render, при проблемах — Railway); ссылка на приложение добавлена в README.md.
+
+Реализация (Этап 6):
+- **Единый Dockerfile** в корне репозитория (многостадийный): stage `node:22-alpine` — сборка фронтенда (`npm ci` + `npm run build`); stage `golang:1.26-alpine` — сборка бэкенда (`CGO_ENABLED=0 go build`); runtime `nginx:1.27-alpine` — SPA и бинарь бэкенда в одном контейнере. Образ ~64MB, `HEALTHCHECK` на `/api/health`, `WORKDIR /srv` для записи `booking.db`.
+- **Запуск по `PORT`**: `nginx.conf.template` (`listen ${PORT};`) обрабатывается официальным envsubst-механизмом nginx (шаблон кладётся в `/etc/nginx/templates/`; подставляются только определённые в окружении переменные — `$uri`/`$host` не трогаются); `/api/` проксируется на внутренний `127.0.0.1:8081`, статика SPA отдаётся через `try_files`. В образе задан дефолт `ENV PORT=8080`.
+- **Нюанс портов**: бэкенд слушает внутренний `127.0.0.1:8081`, а не `8080`, — при дефолтном `PORT=8080` публичный порт nginx и бэкенд конфликтовали за один порт (`Address in use`). На Render `PORT` всегда назначается платформой, но образ обязан работать и с дефолтным значением.
+- **Entrypoint**: `docker-entrypoint.sh` стартует бэкенд в фоне, ждёт `/api/health` (до 30 с), затем запускает официальный `/docker-entrypoint.sh nginx -g "daemon off;"`; trap `TERM/INT/QUIT` корректно останавливает оба процесса.
+- **Нюанс STOPSIGNAL**: базовый образ nginx задаёт `STOPSIGNAL=SIGQUIT`, поэтому `docker stop` шлёт контейнеру `SIGQUIT`, а не `SIGTERM`; без trap на `QUIT` контейнер зависал на 10 с и убивался по `SIGKILL` (диагностировано на busybox/nginx-образах: trap срабатывает при прямом `kill -TERM 1`, но не при `docker stop`).
+- **Deploy**: `render.yaml` (blueprint: web-сервис, `runtime: docker`, `dockerfilePath: ./Dockerfile`, `healthCheckPath: /api/health`, план free) + деплой через Render API (ключ из `APIKEY.md`, в `.gitignore`). На аккаунте уже существовал сервис `ai-for-developers-project-386` (создан из этого репо), его деплой на коммите до Этапа 6 падал `build_failed` (в репо не было корневого Dockerfile) — после пуша Этапа 6 передеплоен и поднялся.
+- **Публичная ссылка**: https://ai-for-developers-project-386-qitn.onrender.com — добавлена в README.md (блок «Демо»).
+- Проверка: `docker build .` проходит; контейнер стартует автоматически, отвечает по `PORT` (`/` — SPA, `/api/health` — 200, deep-link SPA-фолбэк 200); сценарий «создать событие → гость бронирует слот → дубль 409 → бронь в списке» проходит через один контейнер; `docker stop` — graceful exit (0); после деплоя приложение доступно по публичной ссылке и отвечает на `/api/health` 200.
+
 ## Открытые решения (дефолты)
 - **Маршруты**: все операции событий и бронирований строятся по `ownerId` + `eventId` (соответствует PLAN.md и фронт-URL).
 - **Тело POST `/bookings`**: `name`, `email`, `startAt` — слот выбирает гость, сервер сам вычисляет `endAt` по длительности события.
