@@ -215,6 +215,65 @@ hexlet/
 - **Публичная ссылка**: https://ai-for-developers-project-386-qitn.onrender.com — добавлена в README.md (блок «Демо»).
 - Проверка: `docker build .` проходит; контейнер стартует автоматически, отвечает по `PORT` (`/` — SPA, `/api/health` — 200, deep-link SPA-фолбэк 200); сценарий «создать событие → гость бронирует слот → дубль 409 → бронь в списке» проходит через один контейнер; `docker stop` — graceful exit (0); после деплоя приложение доступно по публичной ссылке и отвечает на `/api/health` 200.
 
+### Этап 7 — Интеграция с GitHub App: opencode.yml (этап 1 второй части)
+Статус: выполнено.
+
+- [x] Workflow `opencode.yml` запускается по триггерам `issue_comment` и `pull_request_review_comment` (`types: [created]`).
+- [x] Активация по `/oc` или `/opencode` в начале комментария или через пробел (`if` на строках 11–15 `opencode.yml`).
+- [x] Action `anomalyco/opencode/github@latest`, `model: opencode/big-pickle`, `use_github_token: true`.
+- [x] Переменные окружения: `OPENCODE_API_KEY` + `GITHUB_TOKEN`.
+- [x] Права job: `contents` / `pull-requests` / `issues: write`.
+
+Реализация (Этап 7):
+- Файл `.github/workflows/opencode.yml`: `name: opencode`.
+- Триггеры: `issue_comment` и `pull_request_review_comment` с `types: [created]` — комментарий в issue/PR или ревью-комментарий к PR запускает opencode.
+- Активация: `if` с `contains(github.event.comment.body, ' /oc')`, `startsWith(github.event.comment.body, '/oc')`, `contains(github.event.comment.body, ' /opencode')`, `startsWith(github.event.comment.body, '/opencode')` — срабатывает на команду в начале комментария или после пробела.
+- Action: `anomalyco/opencode/github@latest` с `with: model: opencode/big-pickle`, `use_github_token: true`; `env: OPENCODE_API_KEY` (секрет) и `GITHUB_TOKEN` (секрет).
+- Права job: `permissions: contents: write`, `pull-requests: write`, `issues: write`.
+- Шаг `actions/checkout@v6` с `persist-credentials: true`.
+
+### Этап 8 — Авто-triage новых issues: opencode-triage.yml (этап 2 второй части)
+Статус: выполнено.
+
+- [x] Workflow `opencode-triage.yml` запускается по событию `issues / types: [opened]`.
+- [x] Триаж выполняется только для issues, созданных человеком (фильтр ботов: `github.event.issue.user.type != 'Bot'`).
+- [x] Ответ-комментарий по шаблону: «Резюме / Тип (bug/feature/docs/question) / Приоритет (high/medium/low) / Затрагиваемая часть проекта / Предлагаемые действия / ссылки».
+- [x] Задействован тот же action `anomalyco/opencode/github@latest`, `model: opencode/big-pickle`, `use_github_token: true`.
+- [x] Права job: `contents` / `pull-requests` / `issues: write`.
+
+План (Этап 8):
+- **Событие**: `issues` с `types: [opened]` — триаж выполняется при создании нового issue.
+- **Фильтр ботов**: `if: github.event.issue.user.type != 'Bot'` — триаж только для issues, созданных человеком.
+- **prompt — шаблон ответа**:
+  ```yaml
+  prompt: |
+    Reply as an issue triage comment using exactly this template:
+    ### Резюме
+    ### Тип (bug/feature/docs/question)
+    ### Приоритет (high/medium/low)
+    ### Затрагиваемая часть проекта
+    ### Предлагаемые действия / ссылки
+  ```
+- **Проект workflow**: файл `.github/workflows/opencode-triage.yml` по аналогии с `opencode.yml` — те же `permissions` (`contents: write`, `pull-requests: write`, `issues: write`), `actions/checkout@v6` с `persist-credentials: true`, action `anomalyco/opencode/github@latest` с `model: opencode/big-pickle`, `use_github_token: true` и `env: OPENCODE_API_KEY` + `GITHUB_TOKEN`.
+
+Реализация (Этап 8):
+- Файл `.github/workflows/opencode-triage.yml`: `name: opencode-triage`.
+- Событие: `issues` с `types: [opened]` — триаж запускается при создании нового issue.
+- Фильтр ботов: `if: github.event.issue.user.type != 'Bot'` на уровне job — issues, созданные ботами (в т.ч. автоматизированными), пропускаются.
+- prompt — шаблон ответа:
+  ```yaml
+  prompt: |
+    Reply as an issue triage comment using exactly this template:
+    ### Резюме
+    ### Тип (bug/feature/docs/question)
+    ### Приоритет (high/medium/low)
+    ### Затрагиваемая часть проекта
+    ### Предлагаемые действия / ссылки
+  ```
+- Права job: `permissions: contents: write`, `pull-requests: write`, `issues: write`.
+- Шаг `actions/checkout@v6` с `persist-credentials: true`.
+- Action `anomalyco/opencode/github@latest` с `with: model: opencode/big-pickle`, `use_github_token: true`; `env: OPENCODE_API_KEY` (секрет) и `GITHUB_TOKEN` (секрет).
+
 ## Открытые решения (дефолты)
 - **Маршруты**: все операции событий и бронирований строятся по `ownerId` + `eventId` (соответствует фронт-URL).
 - **Тело POST `/bookings`**: `name`, `email`, `startAt` — слот выбирает гость, сервер сам вычисляет `endAt` по длительности события.
@@ -223,5 +282,3 @@ hexlet/
 - **Шаг сетки**: шаг = длительности события (старт следующего слота сразу после конца предыдущего).
 - **Окно записи**: 14 календарных дней, включая текущий день (`[сегодня, сегодня + 13]`).
 - **График по умолчанию**: Пн–Пт 09:00–18:00, выходные закрыты (настраивается владельцем).
-
-Все этапы по первой части курса завершены. Чтобы проходил CI от release-please - делаю коммит из другой ветки чтобы отработал pull-request.
