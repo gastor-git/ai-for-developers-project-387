@@ -274,6 +274,43 @@ hexlet/
 - Шаг `actions/checkout@v6` с `persist-credentials: true`.
 - Action `anomalyco/opencode/github@latest` с `with: model: opencode/big-pickle`, `use_github_token: true`; `env: OPENCODE_API_KEY` (секрет) и `GITHUB_TOKEN` (секрет).
 
+### Этап 9 — Ночная Lighthouse-проверка с утренним отчётом: lighthouse-nightly.yml (этап 3 второй части)
+Статус: выполнено.
+
+Задача (из `PROMT.md`): в GitHub Actions добавляется повторяющаяся задача — по расписанию и по запросу вручную. Ночью выполняется проверка через Lighthouse CLI, утром команда смотрит отчёт и решает, нужны ли правки. По итогам отчёта правки фиксируются через issue.
+
+План (Этап 9):
+- [x] Новый workflow `.github/workflows/lighthouse-nightly.yml` (стиль — как у `opencode.yml` / `opencode-triage.yml`).
+- [x] Триггеры: `schedule` (`cron '0 3 * * *'` — ежедневно 03:00 UTC, ~06:00 МСК) + `workflow_dispatch` (ручной запуск) с входным параметром `url` (по умолчанию продакшн на Render).
+- [x] `concurrency` (`group: lighthouse-nightly`, `cancel-in-progress: true`) — защита от пересечения ночного и ручного прогонов.
+- [x] Права job: `contents: write`, `pull-requests: write`, `issues: write`, `id-token: write` (нужны агенту для создания/обновления issue).
+- [x] Шаг 1 — `actions/checkout@v6` (`persist-credentials: true`) + `actions/setup-node@v4` (Node 22) + git-identity (паттерн из `opencode.yml`).
+- [x] Шаг 2 — установка Lighthouse CLI: `npm install -g @lhci/cli@0.15.1`.
+- [x] Шаг 3 — warm-up Render (curl-цикл до ответа `/api/health`, до ~5 мин): free-план усыпляет сервис, cold start исказил бы метрики.
+- [x] Шаг 4 — Lighthouse CLI: `lhci collect --url=<URL>/ --numberOfRuns=3 --settings.chromeFlags="--no-sandbox --headless"` → отчёт в `.lighthouseci/` (JSON + HTML).
+- [x] Шаг 5 — job summary: inline-node шаг читает `lhr-*.report.json`, считает средние Performance / Accessibility / Best-Practices / SEO и пишет таблицу в `$GITHUB_STEP_SUMMARY` (баллы видны на странице run).
+- [x] Шаг 6 — сохранение отчёта: `actions/upload-artifact@v4`, `path: .lighthouseci/`, `retention-days: 30` — утром отчёт скачивается со страницы Actions.
+- [x] Шаг 7 — агент OpenCode: `anomalyco/opencode/github@latest`, `model: opencode/big-pickle`, `env: OPENCODE_API_KEY` + `GITHUB_TOKEN`, `use_github_token: true`, обязательный `prompt` (для schedule-события).
+- [x] prompt агента: прочитать отчёты из `.lighthouseci/`, извлечь баллы, через `gh issue list` найти открытый issue с префиксом «Lighthouse» и обновить его (или создать, если нет) — один постоянный issue, без спама. В issue: дата, URL, таблица баллов, список конкретных правок со ссылками на web.dev-аудиты.
+- [x] Чек-лист готовности: `workflow_dispatch` запускается вручную после мержа в `main`; баллы видны в job summary; артефакт с отчётом доступен для скачивания; создан/обновлён постоянный issue «Lighthouse»; ночные прогоны идут автоматически по расписанию (03:00 UTC).
+
+Решение по ключевым вопросам (подтверждено):
+- **Цель аудита**: продакшн на Render (`https://ai-for-developers-project-386-qitn.onrender.com`), перед прогоном warm-up из-за cold start.
+- **Стратегия issue**: один постоянный открытый issue, обновляемый каждым прогоном (создаётся при первом запуске).
+- **Расписание**: `0 3 * * *` ежедневно.
+- **Хранение отчёта**: артефакт Actions (HTML-отчёт) + таблица баллов в job summary; внешняя загрузка (например, `temporary-public-storage`) не используется.
+
+Реализация (Этап 9):
+- Файл `.github/workflows/lighthouse-nightly.yml` (стиль — как у `opencode.yml` / `opencode-triage.yml`).
+- Триггеры: `schedule` с `cron: '0 3 * * *'` (ежедневно 03:00 UTC, ~06:00 МСК) + `workflow_dispatch` с входным параметром `url` (`required: false`, дефолт `https://ai-for-developers-project-386-qitn.onrender.com`). URL для прогона берётся как `github.event.inputs.url || <дефолт>` — работает и для расписания (без input), и для ручного запуска.
+- `concurrency`: `group: lighthouse-nightly` + `cancel-in-progress: true` — ночной и ручной прогоны не пересекаются.
+- Права job: `contents: write`, `pull-requests: write`, `issues: write`, `id-token: write` (нужны агенту для создания/обновления постоянного issue).
+- Шаги: checkout (`persist-credentials: true`) → setup-node 22 → git-identity (паттерн из `opencode.yml`) → `npm install -g @lhci/cli@0.15.1` → warm-up Render (curl-цикл до `/api/health`, до ~5 мин, 60 попыток по 5 с) → `lhci collect --url="$AUDIT_URL/" --numberOfRuns=3 --settings.chromeFlags="--no-sandbox --headless"` (отчёт в `.lighthouseci/`).
+- Job summary: inline-node шаг читает `lhr-*.report.json`, считает средние Performance / Accessibility / Best-Practices / SEO (категории `performance`/`accessibility`/`best-practices`/`seo` из LHR, баллы × 100, 1 знак после запятой), пишет таблицу в `$GITHUB_STEP_SUMMARY` и дублирует её в `.lighthouseci/summary.md` (удобно агенту и входит в артефакт).
+- Артефакт: `actions/upload-artifact@v4`, `path: .lighthouseci/`, `retention-days: 30` — утром HTML/JSON-отчёты скачиваются со страницы Actions.
+- Агент OpenCode: `anomalyco/opencode/github@latest`, `model: opencode/big-pickle`, `env: OPENCODE_API_KEY` + `GITHUB_TOKEN`, `use_github_token: true`, обязательный `prompt` — прочитать `.lighthouseci/`, извлечь баллы, через `gh issue list --state open --search "Lighthouse"` найти постоянный issue с префиксом «Lighthouse» и обновить его (или создать `gh issue create`, если нет) — ровно один issue, без дубликатов. В issue: дата и URL, таблица баллов, конкретные правки со ссылками на web.dev-аудиты (`https://developer.chrome.com/docs/lighthouse/<category>/<audit-id>/`), прогресс/регресс относительно прошлого прогона.
+- Проверка: YAML валиден; node-скрипт job summary протестирован на фейковом LHR-отчёте (таблица средних корректна); `workflow_dispatch` запускается вручную после мержа в `main`; ночные прогоны — автоматически по расписанию 03:00 UTC.
+
 ## Открытые решения (дефолты)
 - **Маршруты**: все операции событий и бронирований строятся по `ownerId` + `eventId` (соответствует фронт-URL).
 - **Тело POST `/bookings`**: `name`, `email`, `startAt` — слот выбирает гость, сервер сам вычисляет `endAt` по длительности события.

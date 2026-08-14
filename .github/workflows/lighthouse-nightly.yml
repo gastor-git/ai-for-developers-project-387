@@ -1,0 +1,136 @@
+name: lighthouse-nightly
+
+on:
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+    inputs:
+      url:
+        description: 'URL приложения для Lighthouse-проверки'
+        required: false
+        default: 'https://ai-for-developers-project-386-qitn.onrender.com'
+
+concurrency:
+  group: lighthouse-nightly
+  cancel-in-progress: true
+
+jobs:
+  lighthouse:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write
+    env:
+      AUDIT_URL: ${{ github.event.inputs.url || 'https://ai-for-developers-project-386-qitn.onrender.com' }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: true
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Configure git identity
+        run: |
+          git config user.name "opencode"
+          git config user.email "gastor.ru@gmail.com"
+
+      - name: Install Lighthouse CLI
+        run: npm install -g @lhci/cli@0.15.1
+
+      - name: Warm up Render (cold start)
+        shell: bash
+        run: |
+          for i in $(seq 1 60); do
+            if curl -fsS -o /dev/null --max-time 15 "$AUDIT_URL/api/health"; then
+              echo "Backend is up after attempt $i"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "Backend did not respond within ~5 minutes: $AUDIT_URL/api/health" >&2
+          exit 1
+
+      - name: Run Lighthouse (lhci collect)
+        run: lhci collect --url="$AUDIT_URL/" --numberOfRuns=3 --settings.chromeFlags="--no-sandbox --headless"
+
+      - name: Write job summary (average scores)
+        shell: bash
+        run: |
+          node <<'EOF'
+          const fs = require('fs');
+          const path = require('path');
+          const dir = '.lighthouseci';
+          const files = fs.readdirSync(dir).filter(f => f.startsWith('lhr-') && f.endsWith('.report.json'));
+          if (!files.length) {
+            console.error('No LHR report files found in ' + dir);
+            process.exit(1);
+          }
+          const categories = [
+            ['performance', 'Performance'],
+            ['accessibility', 'Accessibility'],
+            ['best-practices', 'Best Practices'],
+            ['seo', 'SEO'],
+          ];
+          const runs = files.length;
+          const sums = {};
+          for (const file of files) {
+            const lhr = JSON.parse(fs.readFileSync(path.join(dir, file), 'utf8'));
+            for (const [key] of categories) {
+              const score = lhr.categories[key] ? lhr.categories[key].score : 0;
+              sums[key] = (sums[key] || 0) + score * 100;
+            }
+          }
+          const rows = categories
+            .map(([key, label]) => `| ${label} | ${(sums[key] / runs).toFixed(1)} |`)
+            .join('\n');
+          const summary = [
+            `## Lighthouse — ${new Date().toISOString().slice(0, 10)}`,
+            '',
+            `URL: ${process.env.AUDIT_URL}/`,
+            `Прогонов: ${runs}`,
+            '',
+            '| Категория | Средний балл |',
+            '|---|--:|',
+            rows,
+            '',
+          ].join('\n');
+          fs.writeFileSync(path.join(dir, 'summary.md'), summary);
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, summary + '\n');
+          console.log(summary);
+          EOF
+
+      - name: Upload Lighthouse report
+        uses: actions/upload-artifact@v4
+        with:
+          name: lighthouse-report
+          path: .lighthouseci/
+          retention-days: 30
+
+      - name: Run opencode (update Lighthouse issue)
+        uses: anomalyco/opencode/github@latest
+        env:
+          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          model: opencode/big-pickle
+          use_github_token: true
+          prompt: |
+            Read the Lighthouse reports in `.lighthouseci/` (JSON files `lhr-*.report.json` and `summary.md`).
+            Extract the average scores for Performance, Accessibility, Best Practices and SEO.
+            Find the persistent issue via `gh issue list --state open --search "Lighthouse"` (title starts with "Lighthouse").
+            If it exists, update its body; otherwise create it with `gh issue create` and title "Lighthouse: <YYYY-MM-DD>".
+            Always keep exactly ONE persistent issue - never create a duplicate when one already exists.
+            The issue body (in Russian) must contain:
+            ### Дата и URL
+            ### Баллы (таблица Performance / Accessibility / Best Practices / SEO)
+            ### Конкретные правки
+            For fixes, list the worst-scoring audits from the LHR reports and link each one to web.dev:
+            `https://developer.chrome.com/docs/lighthouse/<category>/<audit-id>/`
+            If the issue already exists, also compare with the previous run and note progress or regressions.
+            Report back the issue number/URL and the extracted scores.
