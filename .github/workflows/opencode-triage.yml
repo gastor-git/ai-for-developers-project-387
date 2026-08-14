@@ -9,8 +9,7 @@ jobs:
     if: github.event.issue.user.type != 'Bot'
     runs-on: ubuntu-latest
     permissions:
-      contents: write
-      pull-requests: write
+      contents: read
       issues: write
     steps:
       - name: Checkout repository

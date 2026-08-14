@@ -18,10 +18,8 @@ jobs:
   lighthouse:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
-      pull-requests: write
+      contents: read
       issues: write
-      id-token: write
     env:
       AUDIT_URL: ${{ github.event.inputs.url || 'https://ai-for-developers-project-386-qitn.onrender.com' }}
     steps:
