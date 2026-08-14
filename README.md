@@ -19,7 +19,8 @@ Web-приложение — упрощённый аналог cal.com. Гост
 
 ## Документация
 
-- `TASK.md` — план, этапы, чек-листы, API-контракт.
+- `TASK.md` — план, этапы, чек-листы, API-контракт (MVP).
+- `TASK-EPIC-AUTH.md` — эпик «Регистрация и авторизация владельца» (backlog).
 - `CONTRIBUTING.md` — правила оформления коммитов (Conventional Commits).
 - `spec/dist/openapi.yaml` — эталонный OpenAPI-контракт (генерируется `make spec`).
 
