@@ -1,0 +1,16 @@
+# Changelog
+
+## 1.0.0 (2026-08-14)
+
+
+### Features
+
+* **infra:** единый Dockerfile и деплой на Render ([802f07b](https://github.com/gastor-git/ai-for-developers-project-387/commit/802f07be5cd867da2ea22fc626516f0fb9a8452a))
+* добавлены E2E тествы, CI и release-please ([baca559](https://github.com/gastor-git/ai-for-developers-project-387/commit/baca559e2dfb1d99b26edeb33002181164734692))
+
+
+### Bug Fixes
+
+* **ci:** починен opencode action через use_github_token ([0a9cf3a](https://github.com/gastor-git/ai-for-developers-project-387/commit/0a9cf3a8a0569f4e2c325b92bdb840f694fd52bc))
+* исправлен workflows/opencode.yml ([de038c9](https://github.com/gastor-git/ai-for-developers-project-387/commit/de038c98065f0e4c0c21da69f8d889d1d4f55148))
+* удален ERROR.md ([508bae8](https://github.com/gastor-git/ai-for-developers-project-387/commit/508bae8f2e43095e8d8680d104f9cbc082413de7))
