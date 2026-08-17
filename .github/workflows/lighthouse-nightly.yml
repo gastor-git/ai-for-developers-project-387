@@ -64,7 +64,7 @@ jobs:
           const fs = require('fs');
           const path = require('path');
           const dir = '.lighthouseci';
-          const files = fs.readdirSync(dir).filter(f => f.startsWith('lhr-') && f.endsWith('.report.json'));
+          const files = fs.readdirSync(dir).filter(f => f.startsWith('lhr-') && f.endsWith('.json'));
           if (!files.length) {
             console.error('No LHR report files found in ' + dir);
             process.exit(1);
@@ -116,10 +116,10 @@ jobs:
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          model: opencode/big-pickle
+          model: opencode/deepseek-v4-flash-free
           use_github_token: true
           prompt: |
-            Read the Lighthouse reports in `.lighthouseci/` (JSON files `lhr-*.report.json` and `summary.md`).
+            Read the Lighthouse reports in `.lighthouseci/` (JSON files `lhr-*.json` and `summary.md`).
             Extract the average scores for Performance, Accessibility, Best Practices and SEO.
             Find the persistent issue via `gh issue list --state open --search "Lighthouse"` (title starts with "Lighthouse").
             If it exists, update its body; otherwise create it with `gh issue create` and title "Lighthouse: <YYYY-MM-DD>".
