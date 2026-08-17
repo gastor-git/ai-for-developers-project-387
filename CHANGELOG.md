@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.2](https://github.com/gastor-git/ai-for-developers-project-387/compare/v1.0.1...v1.0.2) (2026-08-17)
+
+
+### Bug Fixes
+
+* **ci:** исправлен поиск отчётов Lighthouse и смена модели ([b94cfe9](https://github.com/gastor-git/ai-for-developers-project-387/commit/b94cfe99cc85fa5d233a32f8091413bea11abb09))
+* **ci:** устранён пуш opencode из-за артефактов Lighthouse ([840f2eb](https://github.com/gastor-git/ai-for-developers-project-387/commit/840f2ebcf9e11cb99f1a97fbcb1ed2a52eef4af5))
+
 ## [1.0.1](https://github.com/gastor-git/ai-for-developers-project-387/compare/v1.0.0...v1.0.1) (2026-08-17)
 
 
