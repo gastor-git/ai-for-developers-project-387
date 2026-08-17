@@ -110,6 +110,9 @@ jobs:
           path: .lighthouseci/
           retention-days: 30
 
+      - name: Ignore Lighthouse artifacts (keep working tree clean)
+        run: printf '*\n' > .lighthouseci/.gitignore
+
       - name: Run opencode (update Lighthouse issue)
         uses: anomalyco/opencode/github@latest
         env:
