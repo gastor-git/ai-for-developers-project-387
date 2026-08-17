@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.1](https://github.com/gastor-git/ai-for-developers-project-387/compare/v1.0.0...v1.0.1) (2026-08-17)
+
+
+### Bug Fixes
+
+* change node version on lighthousr workflow ([41f4b68](https://github.com/gastor-git/ai-for-developers-project-387/commit/41f4b68c18964f341ea4c9943ec1758005fe6d56))
+
 ## 1.0.0 (2026-08-14)
 
 
